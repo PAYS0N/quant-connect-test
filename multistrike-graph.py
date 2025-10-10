@@ -11,7 +11,7 @@ class OptionsDataGraphAlgorithm(QCAlgorithm):
         self.set_cash(100000)
         
         self.target_date = datetime(2025, 2, 21).date()
-        self.target_strikes = [230, 240]
+        self.target_strikes = [235]
         
         # Add AAPL options
         option = self.add_option("AAPL")
@@ -20,14 +20,21 @@ class OptionsDataGraphAlgorithm(QCAlgorithm):
         
         # Track current day and accumulate data
         self.current_date = None
-        self.daily_data = {}  # {strike: {'call_ivs': [], 'put_ivs': []}}
+        self.daily_data = {}  # {strike: {'call_ivs': [], 'put_ivs': [], 'call_prices': [], 'put_prices': []}}
         
-        # Create only IV chart
+        # Create IV chart
         greeks_chart = Chart("Implied Volatility")
         for strike in self.target_strikes:
             greeks_chart.add_series(Series(f"Call IV {strike}", SeriesType.LINE, "%"))
             greeks_chart.add_series(Series(f"Put IV {strike}", SeriesType.LINE, "%"))
         self.add_chart(greeks_chart)
+        
+        # Create options price chart
+        prices_chart = Chart("Option Prices")
+        for strike in self.target_strikes:
+            prices_chart.add_series(Series(f"Call Price {strike}", SeriesType.LINE, "$"))
+            prices_chart.add_series(Series(f"Put Price {strike}", SeriesType.LINE, "$"))
+        self.add_chart(prices_chart)
     
     def on_data(self, slice):
         current_date = self.time.date()
@@ -56,16 +63,18 @@ class OptionsDataGraphAlgorithm(QCAlgorithm):
         # Accumulate data for each strike
         for call in calls:
             if call.strike not in self.daily_data:
-                self.daily_data[call.strike] = {'call_ivs': [], 'put_ivs': []}
+                self.daily_data[call.strike] = {'call_ivs': [], 'put_ivs': [], 'call_prices': [], 'put_prices': []}
             self.daily_data[call.strike]['call_ivs'].append(call.implied_volatility * 100)
+            self.daily_data[call.strike]['call_prices'].append(call.last_price)
         
         for put in puts:
             if put.strike not in self.daily_data:
-                self.daily_data[put.strike] = {'call_ivs': [], 'put_ivs': []}
+                self.daily_data[put.strike] = {'call_ivs': [], 'put_ivs': [], 'call_prices': [], 'put_prices': []}
             self.daily_data[put.strike]['put_ivs'].append(put.implied_volatility * 100)
+            self.daily_data[put.strike]['put_prices'].append(put.last_price)
     
     def plot_daily_averages(self):
-        """Plot the average IV for each strike for the day"""
+        """Plot the average IV and prices for each strike for the day"""
         for strike, data in self.daily_data.items():
             if len(data['call_ivs']) > 0:
                 avg_call_iv = sum(data['call_ivs']) / len(data['call_ivs'])
@@ -74,6 +83,14 @@ class OptionsDataGraphAlgorithm(QCAlgorithm):
             if len(data['put_ivs']) > 0:
                 avg_put_iv = sum(data['put_ivs']) / len(data['put_ivs'])
                 self.plot("Implied Volatility", f"Put IV {strike}", avg_put_iv)
+            
+            if len(data['call_prices']) > 0:
+                avg_call_price = sum(data['call_prices']) / len(data['call_prices'])
+                self.plot("Option Prices", f"Call Price {strike}", avg_call_price)
+            
+            if len(data['put_prices']) > 0:
+                avg_put_price = sum(data['put_prices']) / len(data['put_prices'])
+                self.plot("Option Prices", f"Put Price {strike}", avg_put_price)
     
     def on_end_of_algorithm(self):
         """Plot the last day's data when backtest ends"""
